@@ -1,0 +1,25 @@
+schema {
+    query: query_root
+    # mutation: mutation_root
+    subscription: subscription_root
+}
+
+type Message {
+    text: String!
+}
+
+input MessageInput {
+    text: String!
+}
+
+# mutation root
+#type mutation_root {}
+
+# query root
+type query_root {
+    echo(text: MessageInput!):Message
+}
+
+type subscription_root {
+    count: Int
+}

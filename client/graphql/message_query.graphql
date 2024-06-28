@@ -1,0 +1,5 @@
+query EchoQuery($text: MessageInput!) {
+    echo(text: $text) {
+        text
+    }
+}

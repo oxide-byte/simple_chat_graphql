@@ -1,1 +1,16 @@
 https://async-graphql.github.io/async-graphql/en/quickstart.html
+
+
+query {
+add(a:1, b:7)
+}
+
+code-first vs schema-first
+
+```
+query MyQuery2 {
+  echo(text: {text: "Test"}) {
+    text
+  }
+}
+```
