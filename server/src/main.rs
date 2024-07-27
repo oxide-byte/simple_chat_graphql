@@ -1,59 +1,27 @@
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
+    Extension,
     response::Html,
-    routing::{get, on, MethodFilter},
-    Extension, Router,
+    Router, routing::{get, MethodFilter, on},
 };
 
-use futures::stream::{BoxStream, StreamExt as _};
-use juniper::{graphql_object, graphql_subscription, EmptyMutation, FieldError, RootNode, GraphQLInputObject, GraphQLObject};
-use juniper_axum::{graphiql, graphql, playground, ws};
+use juniper::RootNode;
+use juniper_axum::{graphiql, playground, ws};
+use juniper_axum::extract::JuniperRequest;
+use juniper_axum::response::JuniperResponse;
 use juniper_graphql_ws::ConnectionConfig;
-use tokio::{net::TcpListener, time::interval};
-use tokio_stream::wrappers::IntervalStream;
+use tokio::net::TcpListener;
 
-#[derive(Clone, Copy, Debug)]
-pub struct Query;
+use crate::components::domain::ChatContext;
+use crate::components::mutation::Mutation;
+use crate::components::query::Query;
+use crate::components::subscription::Subscription;
 
-#[derive(GraphQLInputObject, Debug)]
-pub struct MessageInput{
-    pub text: String
-}
+mod components;
 
-#[derive(GraphQLObject)]
-pub struct Message {
-    pub text: Box<String>
-}
-
-#[graphql_object]
-impl Query {
-     fn echo(text: MessageInput) -> Message {
-         println!("Message: {:?}", text);
-         let text = text.text;
-        Message {text: Box::from(format!("ECHO: {}", text).to_string())}
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct Subscription;
-
-type NumberStream = BoxStream<'static, Result<i32, FieldError>>;
-
-#[graphql_subscription]
-impl Subscription {
-    /// Counts seconds.
-    async fn count() -> NumberStream {
-        let mut value = 0;
-        let stream = IntervalStream::new(interval(Duration::from_secs(1))).map(move |_| {
-            value += 1;
-            Ok(value)
-        });
-        Box::pin(stream)
-    }
-}
-
-type Schema = RootNode<'static, Query, EmptyMutation, Subscription>;
+// type Schema = RootNode<'static, Query, EmptyMutation<ChatContext>, EmptySubscription<ChatContext>>;
+pub type Schema = RootNode<'static, Query, Mutation, Subscription>;
 
 async fn homepage() -> Html<&'static str> {
     "<html><h1>juniper_axum/simple example</h1>\
@@ -63,36 +31,39 @@ async fn homepage() -> Html<&'static str> {
         .into()
 }
 
+async fn custom_graphql(
+    Extension(schema): Extension<Arc<Schema>>,
+    Extension(chat_context): Extension<ChatContext>,
+    JuniperRequest(request): JuniperRequest,
+) -> JuniperResponse {
+    JuniperResponse(request.execute(&*schema, &chat_context).await)
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    let schema = Schema::new(Query, EmptyMutation::new(), Subscription);
+    // let schema = Schema::new(Query, EmptyMutation::<ChatContext>::new(), EmptySubscription::new());
+    let schema = Schema::new(Query, Mutation, Subscription {});
+
+    let chat_context = ChatContext::default();
 
     let app = Router::new()
-        .route(
-            "/graphql",
-            on(
-                MethodFilter::GET.or(MethodFilter::POST),
-                graphql::<Arc<Schema>>,
-            ),
-        )
-        .route(
-            "/subscriptions",
-            get(ws::<Arc<Schema>>(ConnectionConfig::new(()))),
-        )
+        .route("/graphql", on(MethodFilter::GET.or(MethodFilter::POST), custom_graphql))
+        .route("/subscriptions", get(ws::<Arc<Schema>>(ConnectionConfig::new(chat_context.clone()))))
         .route("/graphiql", get(graphiql("/graphql", "/subscriptions")))
         .route("/playground", get(playground("/graphql", "/subscriptions")))
         .route("/", get(homepage))
-        .layer(Extension(Arc::new(schema)));
+        .layer(Extension(Arc::new(schema)))
+        .layer(Extension(chat_context));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
     let listener = TcpListener::bind(addr)
         .await
         .unwrap_or_else(|e| panic!("failed to listen on {addr}: {e}"));
-    tracing::info!("listening on {addr}");
+    tracing::info!("listening on http://{addr}");
     axum::serve(listener, app)
         .await
         .unwrap_or_else(|e| panic!("failed to run `axum::serve`: {e}"));

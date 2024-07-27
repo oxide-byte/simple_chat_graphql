@@ -1,16 +1,13 @@
-https://async-graphql.github.io/async-graphql/en/quickstart.html
+= Simple Chat GraphQL
 
+This is a simple POC for Rust GraphQL containing Query, Mutation and Subscription for
+Server and Client.
 
-query {
-add(a:1, b:7)
-}
+The code is executable, but contains not a correct design to represent a Chat Client/Server
+application. The code is only written in purpose to prepare an AWS AppSync application.
 
-code-first vs schema-first
+Links:
 
-```
-query MyQuery2 {
-  echo(text: {text: "Test"}) {
-    text
-  }
-}
-```
+Juniper GraphQL: https://github.com/graphql-rust/juniper
+
+Local PlayGround: http://127.0.0.1:8080
